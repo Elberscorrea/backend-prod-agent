@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model cidade {
+  id         Int        @id @default(autoincrement())
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @default(now()) @db.Timestamptz(6)
+  nome       String     @unique @db.VarChar
+  servicos   servicos[]
+}
+
+model executor {
+  id         Int        @id @default(autoincrement())
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @default(now()) @db.Timestamptz(6)
+  nome       String     @unique @db.VarChar
+  matricula  String?    @db.VarChar
+  login      String?    @unique @db.VarChar
+  role_id    Int?
+  role       role?      @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_executor_role")
+  servicos   servicos[]
+}
+
+model modalidade {
+  id              Int        @id @default(autoincrement())
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime   @default(now()) @db.Timestamptz(6)
+  nome_modalidade String     @unique @db.VarChar
+  servicos        servicos[]
+}
+
+model polo {
+  id         Int        @id @default(autoincrement())
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @default(now()) @db.Timestamptz(6)
+  nome       String     @unique @db.VarChar
+  servicos   servicos[]
+}
+
+model referencia {
+  id              Int        @id @default(autoincrement())
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime   @default(now()) @db.Timestamptz(6)
+  nome_referencia String     @unique @db.VarChar
+  servicos        servicos[]
+}
+
+model retorno_campo {
+  id           Int        @id @default(autoincrement())
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime   @default(now()) @db.Timestamptz(6)
+  nome_retorno String     @unique @db.VarChar
+  servicos     servicos[]
+}
+
+model servicos {
+  id                 Int            @id @default(autoincrement())
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime       @default(now()) @db.Timestamptz(6)
+  nota               String         @unique @db.VarChar
+  instalacao         String         @db.VarChar
+  inicio_desejado    DateTime       @db.Date
+  conclusao_desejada DateTime       @db.Date
+  data_execucao      DateTime?      @db.Date
+  hora_execucao      DateTime?      @db.Time(6)
+  id_cidade          Int?
+  id_executor        Int?
+  id_modalidade      Int?
+  id_polo            Int?
+  id_referencia      Int?
+  id_retorno_campo   Int?
+  id_setor           Int?
+  id_status          Int?
+  cidade             cidade?        @relation(fields: [id_cidade], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  executor           executor?      @relation(fields: [id_executor], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  modalidade         modalidade?    @relation(fields: [id_modalidade], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  polo               polo?          @relation(fields: [id_polo], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  referencia         referencia?    @relation(fields: [id_referencia], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  retorno_campo      retorno_campo? @relation(fields: [id_retorno_campo], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  setor              setor?         @relation(fields: [id_setor], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status             status?        @relation(fields: [id_status], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model setor {
+  id         Int        @id @default(autoincrement())
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @default(now()) @db.Timestamptz(6)
+  nome_setor String     @unique @db.VarChar
+  servicos   servicos[]
+}
+
+model status {
+  id         Int        @id @default(autoincrement())
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @default(now()) @db.Timestamptz(6)
+  nome       String     @unique @db.VarChar
+  servicos   servicos[]
+}
+
+model role {
+  id       Int        @id @default(autoincrement())
+  role     String     @db.VarChar
+  executor executor[]
+}
