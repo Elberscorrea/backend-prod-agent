@@ -25,7 +25,10 @@ model executor {
   role_id    Int?
   role       role?      @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_executor_role")
   servicos   servicos[]
+
+  @@index([login, matricula])
 }
+
 
 model modalidade {
   id              Int        @id @default(autoincrement())
