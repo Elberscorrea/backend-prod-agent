@@ -1,97 +1,146 @@
-// src/app/services/dashboardService.js
 import {
-  endOfDay,
+  addDays,
+  eachDayOfInterval,
   endOfMonth,
-  startOfMonth,
+  format,
+  isSaturday,
+  isSunday,
+  startOfMonth
 } from "date-fns";
-import {
-  countBusinessDaysInRange,
-  formatISODate,
-  groupByDateKey,
-  isTodayLocal,
-} from "../../../utils/dateUtils.js";
 import prisma from "../../config/prismaClient.js";
 
 export async function gerarDashboardAgenteV2(executorId) {
-  // limites de data
-  const hoje      = new Date();
+  const hoje = new Date();
   const inicioMes = startOfMonth(hoje);
-  const fimHoje   = endOfDay(hoje);
-  const fimMes    = endOfMonth(hoje);
+  const fimHoje = endOfDay(hoje);           // <-- só até 23:59 de hoje
+  const fimMes  = endOfMonth(hoje);    
 
-  // 1) Busca de serviços, com try/catch
-  let servicos;
-  try {
-    servicos = await prisma.servicos.findMany({
-      where: {
-        id_executor: executorId,
-        data_execucao: { gte: inicioMes, lte: fimHoje },
-        status: { nome: "Produtivo" },
-      },
-      orderBy: { data_execucao: "asc" },
-      include: { modalidade: true },
-    });
-  } catch (err) {
-    console.error("Erro ao buscar serviços:", err);
-    throw new Error("Não foi possível carregar dados de produção.");
+  // 1) Total de dias úteis do mês (segunda–sexta = 1, sábado = 0.5)
+  let diasUteisTotal = 0;
+  for (let d = new Date(inicioMes); d <= fimMes; d.setDate(d.getDate() + 1)) {
+    if (isSunday(d)) continue;
+    diasUteisTotal += isSaturday(d) ? 0.5 : 1;
   }
 
-  // 2) Montagem do dashboard
-  return buildDashboard(servicos, hoje, inicioMes, fimMes);
-}
+  const meta_dia = 100;
+  const meta_mensal = Math.round(meta_dia * diasUteisTotal);
 
-function buildDashboard(servicos, hoje, inicioMes, fimMes) {
-  // metas
-  const metaDia     = 100;
-  const diasUteis   = countBusinessDaysInRange(inicioMes, fimMes);
-  const metaMensal  = Math.round(metaDia * diasUteis);
+  // 2) Consulta os serviços já ordenados
+  const servicos = await prisma.servicos.findMany({
+    where: {
+      id_executor: executorId,
+      data_execucao: { gte: inicioMes, lte: fimMes },
+      status: { nome: "Produtivo" }
+    },
+    orderBy: { data_execucao: "asc" },
+    include: { modalidade: true }
+  });
 
-  // contagens básicas
-  const totais       = servicos.length;
-  const producaoDia  = groupByDateKey(servicos, "data_execucao");
-  const modalidades  = groupByDateKey(servicos, s => s.modalidade?.nome_modalidade);
+  const realizados = servicos.length;
+  // 3) Gera o array de produção por dia
+  const producao_dia = agruparPorDia(servicos);
+  const por_modalidade = agruparPorModalidade(servicos);
 
-  // dias úteis executados
-  const diasExecSet = new Set(Object.keys(producaoDia));
-  const diasExe     = diasExecSet.size;
+  // 4) Dias úteis já executados
+  const diasExecutadosSet = new Set(producao_dia.map((p) => p.dia));
+  const diasUteisExecutados = diasExecutadosSet.size;
 
-  // projeção
-  const faltam               = metaMensal - totais;
-  const diasRestantes        = countBusinessDaysInRange(hoje, fimMes, diasExecSet);
-  const mediaDiariaNecessaria= diasRestantes > 0 
-    ? parseFloat((faltam / diasRestantes).toFixed(2))
-    : 0;
-  const dataPrevista = faltam <= 0 
-    ? hoje 
-    : estimarDataConclusao(faltam, hoje, fimMes);
+  // 5) Dias úteis restantes
+  let diasUteisRestantes = 0;
+  for (let d = new Date(hoje); d <= fimMes; d.setDate(d.getDate() + 1)) {
+    if (isSunday(d)) continue;
+    const diaKey = d.toISOString().split("T")[0];
+    if (!diasExecutadosSet.has(diaKey)) {
+      diasUteisRestantes += isSaturday(d) ? 0.5 : 1;
+    }
+  }
 
-  // hoje e última produção
-  const qtdHoje        = servicos.filter(s => isTodayLocal(s.data_execucao, hoje)).length;
-  const ultimaProdIso  = totais > 0 
-    ? formatISODate(servicos[totais - 1].data_execucao) 
+  const faltam = meta_mensal - realizados;
+  const media_diaria_necessaria =
+    diasUteisRestantes > 0
+      ? parseFloat((faltam / diasUteisRestantes).toFixed(2))
+      : 0;
+
+  const data_prevista =
+    faltam <= 0 ? hoje : estimarDataConclusao(faltam, hoje, fimMes);
+
+  // 6) Última produção com base em producao_dia
+  const quantidadeHoje = servicos.filter(s =>
+    isSameDay(s.data_execucao, hoje)
+  ).length;
+
+  const ultima_producao = servicos.length > 0
+    ? format(
+        servicos[servicos.length - 1].data_execucao,
+        "yyyy-MM-dd"
+      )
     : null;
 
   return {
-    meta_mensal: metaMensal,
-    realizados: totais,
-    dias_uteis: { total: diasUteis, executados: diasExe },
-    ultima_producao: ultimaProdIso,
-    hoje: { quantidade: qtdHoje, meta_dia: metaDia },
+    meta_mensal,
+    realizados,
+    dias_uteis: {
+      total: diasUteisTotal,
+      executados: diasUteisExecutados
+    },
+    ultima_producao,
+    hoje: {
+      quantidade: quantidadeHoje,
+      meta_dia
+    },
     projecao: {
-      data_prevista: formatISODate(dataPrevista),
+      data_prevista: data_prevista.toISOString().split("T")[0],
       faltam,
-      media_diaria_necessaria: mediaDiariaNecessaria
+      media_diaria_necessaria
     },
     ranking: { polo: null, posicao: null },
     modalidade: {
-      mais_executada: encontrarExtremo(modalidades, "max"),
-      menos_executada: encontrarExtremo(modalidades, "min")
+      mais_executada: encontrarMaisModalidade(por_modalidade),
+      menos_executada: encontrarMenosModalidade(por_modalidade)
     },
-    producao_dia:   toSortedArray(producaoDia),
-    por_modalidade: toSortedArray(modalidades),
-    por_semana:     agruparPorSemana(servicos, inicioMes, fimMes),
-    calendario:     gerarCalendario(inicioMes, fimMes, producaoDia, metaDia)
+    producao_dia,
+    por_modalidade,
+    por_semana: agruparPorSemana(servicos),
+    calendario: gerarCalendario(inicioMes, fimMes, producao_dia)
   };
+}
+
+function agruparPorDia(servicos) {
+  const mapa = servicos.reduce((acc, s) => {
+    const dia = s.data_execucao.toISOString().split("T")[0];
+    acc[dia] = (acc[dia] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(mapa)
+    .map(([dia, quantidade]) => ({ dia, quantidade }))
+    .sort((a, b) => a.dia.localeCompare(b.dia));
+}
+
+function agruparPorModalidade(servicos) {
+  const modalidades = {};
+  for (const s of servicos) {
+    const nome = s.modalidade?.nome_modalidade || "Desconhecido";
+    modalidades[nome] = (modalidades[nome] || 0) + 1;
+  }
+  return Object.entries(modalidades).map(([nome, quantidade]) => ({
+    nome,
+    quantidade
+  }));
+}
+
+function encontrarMaisModalidade(modalidades) {
+  return modalidades.reduce(
+    (a, b) => (a.quantidade > b.quantidade ? a : b),
+    { nome: null, quantidade: 0 }
+  );
+}
+
+function encontrarMenosModalidade(modalidades) {
+  return modalidades.reduce(
+    (a, b) => (a.quantidade < b.quantidade ? a : b),
+    { nome: null, quantidade: Infinity }
+  );
 }
 
 function estimarDataConclusao(faltam, hoje, fimMes) {
