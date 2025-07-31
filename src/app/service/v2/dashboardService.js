@@ -4,13 +4,13 @@ import {
   endOfMonth,
   startOfMonth,
 } from "date-fns";
-import prisma from "../../config/prismaClient.js";
 import {
   countBusinessDaysInRange,
   formatISODate,
   groupByDateKey,
   isTodayLocal,
-} from "../utils/dateUtils.js";
+} from "../../../utils/dateUtils.js";
+import prisma from "../../config/prismaClient.js";
 
 export async function gerarDashboardAgenteV2(executorId) {
   // limites de data
