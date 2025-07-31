@@ -1,4 +1,4 @@
-import prisma from '../config/prismaClient.js';
+import prisma from '../../config/prismaClient.js';
 
 export async function buscarProdutividadeDoMesAtual(id_executor) {
   const now = new Date();

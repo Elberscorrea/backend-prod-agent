@@ -1,4 +1,4 @@
-import { buscarProdutividadeDoMesAtual } from '../service/dashboardService.js';
+import { buscarProdutividadeDoMesAtual } from '../../service/v1/dashboardService.js';
 
 export async function getDashboardExecutor(req, res) {
   try {

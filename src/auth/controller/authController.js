@@ -28,7 +28,7 @@ export async function login(req, res) {
         permissions: usuario.role === 'admin' ? ['dashboard', 'users'] : ['dashboard']
       },
       SECRET_KEY,
-      { expiresIn: '8h' }
+      { expiresIn: '1h' }
     );
     const fimJWT = Date.now();
 

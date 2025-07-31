@@ -1,4 +1,4 @@
-import prisma from "../config/prismaClient.js";
+import prisma from "../../app/config/prismaClient.js";
 
 export async function autenticarUsuario(login, matricula) {
   console.time('🔍 Prisma - executor');

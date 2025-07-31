@@ -1,6 +1,6 @@
 import express from 'express';
-import { getDashboardExecutor } from '../controller/dashboardController.js';
-import { autenticarToken } from '../middleware/authMiddleware.js';
+import { getDashboardExecutor } from '../../controller/v1/dashboardController.js';
+import { autenticarToken } from '../../middleware/authMiddleware.js';
 
 const router = express.Router();
 
