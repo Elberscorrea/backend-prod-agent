@@ -1,8 +1,10 @@
 import {
   addDays,
   eachDayOfInterval,
+  endOfDay, // <-- novo
   endOfMonth,
   format,
+  isSameDay, // <-- novo
   isSaturday,
   isSunday,
   startOfMonth
@@ -13,7 +15,7 @@ export async function gerarDashboardAgenteV2(executorId) {
   const hoje = new Date();
   const inicioMes = startOfMonth(hoje);
   const fimHoje = endOfDay(hoje);           // <-- só até 23:59 de hoje
-  const fimMes  = endOfMonth(hoje);    
+  const fimMes  = endOfMonth(hoje);         // para calendário, projeção etc.
 
   // 1) Total de dias úteis do mês (segunda–sexta = 1, sábado = 0.5)
   let diasUteisTotal = 0;
@@ -21,15 +23,14 @@ export async function gerarDashboardAgenteV2(executorId) {
     if (isSunday(d)) continue;
     diasUteisTotal += isSaturday(d) ? 0.5 : 1;
   }
-
   const meta_dia = 100;
   const meta_mensal = Math.round(meta_dia * diasUteisTotal);
 
-  // 2) Consulta os serviços já ordenados
+  // 2) Consulta APENAS até o fim de hoje
   const servicos = await prisma.servicos.findMany({
     where: {
       id_executor: executorId,
-      data_execucao: { gte: inicioMes, lte: fimMes },
+      data_execucao: { gte: inicioMes, lte: fimHoje },
       status: { nome: "Produtivo" }
     },
     orderBy: { data_execucao: "asc" },
@@ -37,15 +38,16 @@ export async function gerarDashboardAgenteV2(executorId) {
   });
 
   const realizados = servicos.length;
-  // 3) Gera o array de produção por dia
-  const producao_dia = agruparPorDia(servicos);
-  const por_modalidade = agruparPorModalidade(servicos);
 
-  // 4) Dias úteis já executados
+  // 3) Produção por dia e por modalidade (sem alterações)
+  const producao_dia     = agruparPorDia(servicos);
+  const por_modalidade   = agruparPorModalidade(servicos);
+
+  // 4) Conta quantos dias úteis já executou
   const diasExecutadosSet = new Set(producao_dia.map((p) => p.dia));
   const diasUteisExecutados = diasExecutadosSet.size;
 
-  // 5) Dias úteis restantes
+  // 5) Projeção (idem)
   let diasUteisRestantes = 0;
   for (let d = new Date(hoje); d <= fimMes; d.setDate(d.getDate() + 1)) {
     if (isSunday(d)) continue;
@@ -54,17 +56,15 @@ export async function gerarDashboardAgenteV2(executorId) {
       diasUteisRestantes += isSaturday(d) ? 0.5 : 1;
     }
   }
-
   const faltam = meta_mensal - realizados;
   const media_diaria_necessaria =
     diasUteisRestantes > 0
       ? parseFloat((faltam / diasUteisRestantes).toFixed(2))
       : 0;
-
   const data_prevista =
     faltam <= 0 ? hoje : estimarDataConclusao(faltam, hoje, fimMes);
 
-  // 6) Última produção com base em producao_dia
+  // 6) Correção de hoje.quantidade e ultima_producao:
   const quantidadeHoje = servicos.filter(s =>
     isSameDay(s.data_execucao, hoje)
   ).length;
@@ -83,9 +83,9 @@ export async function gerarDashboardAgenteV2(executorId) {
       total: diasUteisTotal,
       executados: diasUteisExecutados
     },
-    ultima_producao,
+    ultima_producao,            // agora reflete até hoje
     hoje: {
-      quantidade: quantidadeHoje,
+      quantidade: quantidadeHoje, // > 0 se houve atividade hoje
       meta_dia
     },
     projecao: {
@@ -104,6 +104,8 @@ export async function gerarDashboardAgenteV2(executorId) {
     calendario: gerarCalendario(inicioMes, fimMes, producao_dia)
   };
 }
+
+// ... resto das funções (agruparPorDia, agruparPorModalidade, etc.) permanece igual.
 
 function agruparPorDia(servicos) {
   const mapa = servicos.reduce((acc, s) => {
