@@ -14,10 +14,10 @@ import prisma from "../../config/prismaClient.js";
 export async function gerarDashboardAgenteV2(executorId) {
   const hoje = new Date();
   const inicioMes = startOfMonth(hoje);
-  const fimHoje = endOfDay(hoje);           // <-- só até 23:59 de hoje
-  const fimMes  = endOfMonth(hoje);         // para calendário, projeção etc.
+  const fimHoje = endOfDay(hoje);           
+  const fimMes  = endOfMonth(hoje); 
 
-  // 1) Total de dias úteis do mês (segunda–sexta = 1, sábado = 0.5)
+ 
   let diasUteisTotal = 0;
   for (let d = new Date(inicioMes); d <= fimMes; d.setDate(d.getDate() + 1)) {
     if (isSunday(d)) continue;
@@ -39,7 +39,7 @@ export async function gerarDashboardAgenteV2(executorId) {
 
   const realizados = servicos.length;
 
-  // 3) Produção por dia e por modalidade (sem alterações)
+  
   const producao_dia     = agruparPorDia(servicos);
   const por_modalidade   = agruparPorModalidade(servicos);
 
