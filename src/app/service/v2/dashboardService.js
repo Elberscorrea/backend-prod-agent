@@ -11,43 +11,56 @@ import {
 } from "date-fns";
 import prisma from "../../config/prismaClient.js";
 
-export async function gerarDashboardAgenteV2(executorId) {
+export async function gerarDashboardAgenteV2(executorId, ano, mes) {
+  // Se não vier ano/mes, usa o mês atual
   const hoje = new Date();
-  const inicioMes = startOfMonth(hoje);
-  const fimHoje = endOfDay(hoje);           
-  const fimMes  = endOfMonth(hoje); 
+  const anoFiltro = ano || hoje.getFullYear();
+  const mesFiltro = mes ? mes - 1 : hoje.getMonth(); // mês no JS começa em 0
 
- 
+  const inicioMes = startOfMonth(new Date(anoFiltro, mesFiltro, 1));
+  const fimHoje =
+    ano && mes
+      ? endOfMonth(inicioMes) // Se o usuário escolheu um mês, pega o mês todo
+      : endOfDay(hoje); // Se for mês atual, vai só até hoje
+  const fimMes = endOfMonth(inicioMes);
+
+  // Dias úteis totais do mês
   let diasUteisTotal = 0;
   for (let d = new Date(inicioMes); d <= fimMes; d.setDate(d.getDate() + 1)) {
     if (isSunday(d)) continue;
     diasUteisTotal += isSaturday(d) ? 0.5 : 1;
   }
+
   const meta_dia = 100;
   const meta_mensal = Math.round(meta_dia * diasUteisTotal);
 
-  // 2) Consulta APENAS até o fim de hoje
   const servicos = await prisma.servicos.findMany({
     where: {
       id_executor: executorId,
-      data_execucao: { gte: inicioMes, lte: fimHoje },
-      status: { nome: "Produtivo" }
+      data_execucao: {
+        gte: inicioMes,
+        lte: fimHoje
+      },
+      status: {
+        is: {
+          nome: {
+            equals: "Produtivo",
+            mode: "insensitive"
+          }
+        }
+      }
     },
     orderBy: { data_execucao: "asc" },
     include: { modalidade: true }
   });
 
   const realizados = servicos.length;
+  const producao_dia = agruparPorDia(servicos);
+  const por_modalidade = agruparPorModalidade(servicos);
 
-  
-  const producao_dia     = agruparPorDia(servicos);
-  const por_modalidade   = agruparPorModalidade(servicos);
-
-  // 4) Conta quantos dias úteis já executou
   const diasExecutadosSet = new Set(producao_dia.map((p) => p.dia));
   const diasUteisExecutados = diasExecutadosSet.size;
 
-  // 5) Projeção (idem)
   let diasUteisRestantes = 0;
   for (let d = new Date(hoje); d <= fimMes; d.setDate(d.getDate() + 1)) {
     if (isSunday(d)) continue;
@@ -56,36 +69,36 @@ export async function gerarDashboardAgenteV2(executorId) {
       diasUteisRestantes += isSaturday(d) ? 0.5 : 1;
     }
   }
+
   const faltam = meta_mensal - realizados;
   const media_diaria_necessaria =
     diasUteisRestantes > 0
       ? parseFloat((faltam / diasUteisRestantes).toFixed(2))
       : 0;
+
   const data_prevista =
     faltam <= 0 ? hoje : estimarDataConclusao(faltam, hoje, fimMes);
 
-  // 6) Correção de hoje.quantidade e ultima_producao:
-  const quantidadeHoje = servicos.filter(s =>
+  const quantidadeHoje = servicos.filter((s) =>
     isSameDay(s.data_execucao, hoje)
   ).length;
 
-  const ultima_producao = servicos.length > 0
-    ? format(
-        servicos[servicos.length - 1].data_execucao,
-        "yyyy-MM-dd"
-      )
-    : null;
+  const ultima_producao =
+    servicos.length > 0
+      ? format(servicos[servicos.length - 1].data_execucao, "yyyy-MM-dd")
+      : null;
 
   return {
+    mes_referencia: format(inicioMes, "MM/yyyy"), // <-- mostra qual mês está sendo usado
     meta_mensal,
     realizados,
     dias_uteis: {
       total: diasUteisTotal,
       executados: diasUteisExecutados
     },
-    ultima_producao,            // agora reflete até hoje
+    ultima_producao,
     hoje: {
-      quantidade: quantidadeHoje, // > 0 se houve atividade hoje
+      quantidade: quantidadeHoje,
       meta_dia
     },
     projecao: {
@@ -100,12 +113,10 @@ export async function gerarDashboardAgenteV2(executorId) {
     },
     producao_dia,
     por_modalidade,
-    por_semana: agruparPorSemana(servicos),
+    por_semana: agruparPorSemana(servicos, inicioMes, fimMes),
     calendario: gerarCalendario(inicioMes, fimMes, producao_dia)
   };
 }
-
-// ... resto das funções (agruparPorDia, agruparPorModalidade, etc.) permanece igual.
 
 function agruparPorDia(servicos) {
   const mapa = servicos.reduce((acc, s) => {
